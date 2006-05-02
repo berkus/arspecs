@@ -1,7 +1,7 @@
 require 'spec'
 require 'active_record/fixtures'
 
-class FixturesHandler < Spec::Runner::Context
+class Spec::Runner::Specification
   cattr_accessor :fixture_path
   cattr_accessor :fixture_table_names
   cattr_accessor :use_transactional_fixtures
@@ -11,11 +11,6 @@ class FixturesHandler < Spec::Runner::Context
   @@use_transactional_fixtures = false
   @@already_loaded_fixtures = {}
       	    
-  def initialize(*args)
-    puts "initialize"
-    super
-  end
-
   def self.fixtures(*table_names)
     puts "fixtures(#{table_names.inspect})"
     table_names = table_names.flatten.map { |n| n.to_s }
@@ -24,24 +19,21 @@ class FixturesHandler < Spec::Runner::Context
   end
 
   def use_transactional_fixtures?
-    puts "use_transactional_fixtures?"
     self.use_transactional_fixtures
   end
 
-  def setup(&block)
-    local_setup = method :setup_fixtures
-    super { local_setup.call; block.call }
-  end
+  alias_method :old_run, :run
   
-  def teardown(&block)
-    local_teardown = method :teardown_fixtures
-    super { block.call; local_teardown.call }
+  def run(reporter=nil, setup_block=nil, teardown_block=nil)
+    setup_fixtures
+    old_run(reporter, setup_block, teardown_block)
+    teardown_fixtures
   end
 
   private
 
   def setup_fixtures
-    puts "setup"
+    puts "setup_fixtures"
     # Load fixtures once and begin transaction.
     if use_transactional_fixtures?
       if @@already_loaded_fixtures[self.class]
@@ -65,7 +57,7 @@ class FixturesHandler < Spec::Runner::Context
   end
 
   def teardown_fixtures
-    puts "teardown"
+    puts "teardown_fixtures"
     # Rollback changes.
     if use_transactional_fixtures?
       ActiveRecord::Base.connection.rollback_db_transaction
@@ -104,12 +96,16 @@ end
 
 module Kernel
   def fixtures(*table_names)
-    FixturesHandler.fixtures(table_names)
+    Spec::Runner::Specification.fixtures(table_names)
+  end
+  
+  def use_transactional_fixtures(enable)
+    Spec::Runner::Specification.use_transactional_fixtures = enable
   end
 
-  def fixture_context(name, *table_names, &block)
+  def context(name, *table_names, &block)
     puts "context(#{name}, #{table_names.inspect})"
-    FixturesHandler.fixtures(table_names) if table_names.size > 0
-    FixturesHandler.new(name, &block)
+    fixtures(table_names) if table_names.size > 0
+    Spec::Runner::Context.new(name, &block)
   end
 end
